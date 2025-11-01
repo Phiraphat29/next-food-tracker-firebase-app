@@ -102,7 +102,7 @@ export default function Page() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-fuchsia-400 via-purple-500 to-pink-500 p-4">
+    <div className="flex items-center justify-center min-h-screen bg-linear-to-br from-fuchsia-400 via-purple-500 to-pink-500 p-4">
       <div className="bg-white/90 backdrop-blur-lg p-8 md:p-12 rounded-3xl shadow-2xl text-center max-w-lg w-full border border-white/80">
         {/* หัวข้อ */}
         <h1 className="text-4xl md:text-5xl font-extrabold mb-2 text-gray-800 drop-shadow-md">

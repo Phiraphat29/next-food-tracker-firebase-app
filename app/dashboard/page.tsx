@@ -5,11 +5,11 @@ import { supabase } from "@/lib/supabaseClient";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { collection, getDocs, query } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebaseConfig";
 
 interface Food {
-  id: number;
+  id: string;
   foodname: string;
   meal: string;
   fooddate_at: string;
@@ -42,7 +42,7 @@ export default function Page() {
         // set result to state food
         setFoods(
           result.docs.map((doc) => ({
-            id: parseInt(doc.id),
+            id: doc.id,
             foodname: doc.data().foodname,
             meal: doc.data().meal,
             fooddate_at: doc.data().fooddate_at,
@@ -81,33 +81,69 @@ export default function Page() {
     setCurrentPage(1); // Reset to first page on new search
   };
 
-  //* handle delete
-  const handleDelete = async (id: number) => {
+  //* handle delete (AI Generated)
+  const handleDelete = async (id: string) => {
     //* show confirm dialog
     const confirm = window.confirm("คุณต้องการลบข้อมูลอาหารนี้หรือไม่?");
     if (!confirm) {
       return;
     }
-    //* delete food from supabase
-    const { error } = await supabase.from("food_tb").delete().eq("id", id);
-    if (error) {
+
+    try {
+      // Get the food document to retrieve image URL
+      const foodToDelete = foods.find((food) => food.id === id);
+      if (!foodToDelete) {
+        alert("ไม่พบข้อมูลอาหาร");
+        return;
+      }
+
+      // Delete image from Supabase storage if image exists
+      if (foodToDelete.food_image_url) {
+        try {
+          // Extract filename from Supabase URL
+          // URL format: https://[project].supabase.co/storage/v1/object/public/food_bk/[filename]
+          const urlParts = foodToDelete.food_image_url.split("/food_bk/");
+          if (urlParts.length > 1) {
+            const filename = urlParts[1].split("?")[0]; // Remove query params if any
+            const { error: imageError } = await supabase.storage
+              .from("food_bk")
+              .remove([filename]);
+
+            if (imageError) {
+              console.error("Error deleting food image:", imageError);
+              // Continue with document deletion even if image deletion fails
+            }
+          }
+        } catch (imageError) {
+          console.error("Error deleting food image:", imageError);
+          // Continue with document deletion even if image deletion fails
+        }
+      }
+
+      // Delete document from Firestore
+      const docRef = doc(db, "foods", id);
+      await deleteDoc(docRef);
+
+      // Delete food from local state
+      setFoods((prevFoods) => prevFoods.filter((food) => food.id !== id));
+
+      alert("ลบข้อมูลอาหารสำเร็จ");
+
+      // Refresh the page
+      router.refresh();
+    } catch (error) {
       console.error("Error deleting food:", error);
       alert("เกิดข้อผิดพลาดในการลบข้อมูล");
-    } else {
-      alert("ลบข้อมูลอาหารสำเร็จ");
     }
-    //* delete food from local state
-    setFoods((prevFoods) => prevFoods.filter((food) => food.id !== id));
-    //* refresh the page
-    router.refresh();
   };
 
   //* handle edit
-  const handleEdit = (id: number) => {
+  const handleEdit = (id: string) => {
     console.log(`Editing food with ID: ${id}`);
     //* redirect to updatefood page
     router.push(`/updatefood/${id}`);
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-fuchsia-400 via-purple-500 to-pink-500 p-4">
       <div className="container mx-auto max-w-7xl bg-white/90 backdrop-blur-lg p-8 md:p-12 rounded-3xl shadow-2xl text-gray-800 border border-white/80">
