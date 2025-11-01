@@ -17,6 +17,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const [date, setDate] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -24,18 +25,24 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     const fetchFood = async () => {
       try {
-        const foodDoc = await getDoc(doc(db, "food_tb", resolvedParams.id));
+        const foodDoc = await getDoc(doc(db, "foods", resolvedParams.id));
         if (foodDoc.exists()) {
           const foodData = foodDoc.data();
           setFoodName(foodData.foodname);
           setMeal(foodData.meal);
           setDate(foodData.fooddate_at);
-          setImagePreview(foodData.food_image_url);
+          setImagePreview(foodData.food_image_url || null);
+          setOriginalImageUrl(foodData.food_image_url || null);
+        } else {
+          alert("ไม่พบข้อมูลอาหาร");
+          router.push("/dashboard");
         }
       } catch (error) {
         console.error("Error fetching food:", error);
         alert("เกิดข้อผิดพลาดในการโหลดข้อมูลอาหาร");
         router.push("/dashboard");
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -80,36 +87,59 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
 
     try {
       //* upload new image to supabase storage if image is selected
-      let image_url = imagePreview; // Keep existing image URL by default
+      let image_url = originalImageUrl; // Keep existing image URL by default
+
       if (image) {
-        // named new image file
+        // Delete old image from Supabase storage if it exists
+        if (originalImageUrl) {
+          try {
+            // Extract filename from Supabase URL
+            const urlParts = originalImageUrl.split("/food_bk/");
+            if (urlParts.length > 1) {
+              const filename = urlParts[1].split("?")[0]; // Remove query params if any
+              const { error: deleteError } = await supabase.storage
+                .from("food_bk")
+                .remove([filename]);
+
+              if (deleteError) {
+                console.error("Error deleting old image:", deleteError);
+                // Continue with upload even if old image deletion fails
+              }
+            }
+          } catch (deleteError) {
+            console.error("Error deleting old image:", deleteError);
+            // Continue with upload even if old image deletion fails
+          }
+        }
+
+        // Upload new image
         const new_image_file_name = `${Date.now()}-${image.name}`;
-        // upload it
-        const { error } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from("food_bk")
           .upload(new_image_file_name, image);
-        // after upload, check if the upload is successful
-        if (error) {
+
+        if (uploadError) {
           alert("พบปัญหาในการอัปโหลดรูปภาพ");
-          console.log(error.message);
+          console.log(uploadError.message);
+          setIsUpdating(false);
           return;
-        } else {
-          const { data } = await supabase.storage
-            .from("food_bk")
-            .getPublicUrl(new_image_file_name);
-          image_url = data.publicUrl;
         }
+
+        // Get public URL for the new image
+        const { data } = await supabase.storage
+          .from("food_bk")
+          .getPublicUrl(new_image_file_name);
+        image_url = data.publicUrl;
       }
 
       //* update form data in firestore
-      await updateDoc(doc(db, "food_tb", resolvedParams.id), {
+      await updateDoc(doc(db, "foods", resolvedParams.id), {
         foodname: foodName,
         meal: meal,
         fooddate_at: date,
-        food_image_url: image_url,
+        food_image_url: image_url || null,
       });
 
-      // after update, check if the update is successful
       alert("อัปเดตข้อมูลอาหารสำเร็จ");
       // redirect to dashboard
       router.push("/dashboard");
@@ -122,7 +152,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-linear-to-br from-fuchsia-400 via-purple-500 to-pink-500 p-4">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-fuchsia-400 via-purple-500 to-pink-500 p-4">
       <div className="bg-white/90 backdrop-blur-lg p-8 md:p-12 rounded-3xl shadow-2xl text-center max-w-lg w-full border border-white/80">
         {/* หัวข้อ */}
         <h1 className="text-4xl md:text-5xl font-extrabold mb-2 text-gray-800 drop-shadow-md">
@@ -146,7 +176,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
                 placeholder="Food Name"
                 value={foodName}
                 onChange={(e) => setFoodName(e.target.value)}
-                className="p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 transition-colors"
+                className="text-gray-800 p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 transition-colors"
                 required
               />
 
@@ -154,7 +184,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
               <select
                 value={meal}
                 onChange={(e) => setMeal(e.target.value)}
-                className="p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 transition-colors bg-white"
+                className="text-gray-800 p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 transition-colors bg-white"
                 required
               >
                 <option value="" disabled>
@@ -171,7 +201,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 transition-colors"
+                className="text-gray-800 p-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 transition-colors"
                 required
               />
 
